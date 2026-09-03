@@ -9,7 +9,21 @@ import pandas as pd
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
-from pipeline import SmartCartPipeline, build_profiles, load_dataset
+from pipeline import (
+    DROPPED_COLS,
+    PROFILE_COLS,
+    SPENDING_COLS,
+    SmartCartPipeline,
+    build_profiles,
+    load_dataset,
+)
+
+REQUIRED_COLUMNS = sorted(
+    set(DROPPED_COLS)
+    | set(SPENDING_COLS)
+    | {"Education", "Recency", "Income", "Response", "Complain"}
+    | {col for col in PROFILE_COLS if col.startswith("Num")}
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -129,8 +143,16 @@ def upload():
         return jsonify({"error": "no file uploaded"}), 400
     try:
         df = pd.read_csv(file)
+    except Exception as exc:  # noqa: BLE001 - surface parsing errors to the UI
+        return jsonify({"error": f"could not read CSV: {exc}"}), 400
+
+    missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
+    if missing:
+        return jsonify({"error": f"CSV is missing required columns: {', '.join(missing)}"}), 400
+
+    try:
         pipeline = SmartCartPipeline(df)
-    except Exception as exc:  # noqa: BLE001 - surface parsing/schema errors to the UI
+    except Exception as exc:  # noqa: BLE001 - surface pipeline errors to the UI
         return jsonify({"error": f"could not process CSV: {exc}"}), 400
 
     dataset_id = uuid.uuid4().hex[:8]
