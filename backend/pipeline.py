@@ -231,7 +231,7 @@ def build_profiles(result: SegmentationResult) -> list[dict]:
     df["Cluster"] = result.labels
     medians = df[PROFILE_COLS].median().to_dict()
 
-    profiles = []
+    profiles: list[dict] = []
     for cluster, group in df.groupby("Cluster"):
         means = {col: float(group[col].mean()) for col in PROFILE_COLS}
         profiles.append(
@@ -245,4 +245,16 @@ def build_profiles(result: SegmentationResult) -> list[dict]:
                 "living_with": group["Living_with"].value_counts().to_dict(),
             }
         )
+    return _disambiguate(profiles)
+
+
+def _disambiguate(profiles: list[dict]) -> list[dict]:
+    """Clusters can share a base label; split ties on campaign responsiveness."""
+    for name in {p["name"] for p in profiles}:
+        tied = [p for p in profiles if p["name"] == name]
+        if len(tied) < 2:
+            continue
+        for profile in tied:
+            response = profile["metrics"]["Response"] * 100
+            profile["name"] = f"{name} · {response:.0f}% campaign response"
     return profiles
